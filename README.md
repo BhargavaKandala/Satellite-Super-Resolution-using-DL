@@ -34,6 +34,7 @@ land-cover experiment that tests whether the super-resolution actually helps.
 | [`context.md`](context.md) | Project thesis, scientific constraints, roadmap |
 | [`docs/PITCH.md`](docs/PITCH.md) | Slide-by-slide presentation script + anticipated judge questions |
 | [`docs/DEMO.md`](docs/DEMO.md) | Live demo runbook — exact commands, timings, fallbacks |
+| [`docs/real-data.md`](docs/real-data.md) | **Adding real Sentinel-2 data** — the highest-value next step |
 | [`docs/gpu-runbook.md`](docs/gpu-runbook.md) | Running on the NVIDIA DGX B200 |
 
 ---
@@ -124,6 +125,7 @@ sih142-satellite-sr/
 ├── docs/
 │   ├── PITCH.md                 presentation script + judge Q&A
 │   ├── DEMO.md                  live demo runbook
+│   ├── real-data.md             importing real Sentinel-2 L2A
 │   └── gpu-runbook.md           running on the NVIDIA DGX B200
 ├── src/
 │   ├── config.py                config loading + cross-field validation
@@ -145,9 +147,9 @@ sih142-satellite-sr/
 │   │   └── evaluate.py          protocols + comparison reports
 │   ├── uncertainty/uncertainty.py
 │   └── applications/urban_mapping.py
-├── scripts/                     the five CLI entry points
+├── scripts/                     CLI entry points (incl. import_sentinel2.py)
 ├── app/dashboard.py             Streamlit UI
-└── tests/                       319 tests incl. an end-to-end smoke test
+└── tests/                       337 tests incl. an end-to-end smoke test
 ```
 
 ### Three design decisions worth knowing
@@ -241,7 +243,7 @@ git clone <repo> && cd sih142-satellite-sr
 python3.12 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest -q                          # 319 tests, ~25 s on CPU
+pytest -q                          # 337 tests, ~25 s on CPU
 ```
 
 CUDA is used automatically when available. For a GPU build matched to your driver:
@@ -628,7 +630,7 @@ Downstream land-cover classification (same centroids applied to both products):
 ## Testing
 
 ```bash
-pytest -q                        # 319 tests
+pytest -q                        # 337 tests
 pytest tests/test_end_to_end.py  # the full acceptance sequence on synthetic data
 ```
 

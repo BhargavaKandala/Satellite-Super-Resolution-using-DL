@@ -183,7 +183,7 @@ Finish on the warning banner and read it aloud:
 | Inference + uncertainty (256² → 1024²) | ~13 s |
 | Evaluation + downstream | ~35 s |
 | Dashboard startup | ~2 s |
-| Full test suite (319 tests) | ~30 s |
+| Full test suite (337 tests) | ~30 s |
 
 **Retraining moves your numbers by roughly ±0.3 dB PSNR** — cuDNN autotuning and
 worker-process augmentation make runs reproducible in distribution, not bitwise.
@@ -210,7 +210,7 @@ remembers a stack trace.
 | Laptop dies | Have the deck and screenshots on a phone |
 
 **The tests are a fallback too.** If a demo fails, `py -m pytest -q` finishing
-with 319 passing in ~24 seconds is a genuinely strong recovery — it shows the
+with 337 passing in ~24 seconds is a genuinely strong recovery — it shows the
 system works and that you engineered it properly.
 
 ---
