@@ -12,6 +12,7 @@ data/raw/*
 data/processed/*
 data/patches/*
 data/reference/*
+data/archive/*
 !data/**/.gitkeep
 !data/**/README.md
 
