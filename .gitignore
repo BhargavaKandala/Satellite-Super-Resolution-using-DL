@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Data — satellite scenes are large; never commit them
+data/raw/*
+data/processed/*
+data/patches/*
+data/reference/*
+!data/**/.gitkeep
+!data/**/README.md
+
+# Artifacts
+outputs/
+checkpoints/
+runs/
+*.pth
+*.pt
+*.ckpt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Generated demo input (scripts/prepare_dataset.py --synthetic)
+sample.tif

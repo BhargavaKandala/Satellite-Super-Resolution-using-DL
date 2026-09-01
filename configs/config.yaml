@@ -1,0 +1,175 @@
+# =====================================================================
+# SIH 2026 — PS 142
+# Deep Learning Based Super Resolution Mapping (SRM)
+# from Medium Resolution Satellite Imageries
+# =====================================================================
+# Every stage of the pipeline reads from this single file so that a run
+# is reproducible from (config.yaml + seed + checkpoint) alone.
+
+project:
+  name: sih142-satellite-sr
+  version: "1.0.0"
+  seed: 42
+
+# ---------------------------------------------------------------------
+# Sensor / data description
+# ---------------------------------------------------------------------
+data:
+  # Band order expected inside the input GeoTIFF (1-indexed rasterio bands).
+  # Sentinel-2 10 m bands. Extend this list to add B05/B06/... later; the
+  # model input channel count is derived from len(bands), nothing else.
+  bands: [B04, B03, B02, B08]        # Red, Green, Blue, NIR
+  band_indices: [1, 2, 3, 4]          # position of each band in the GeoTIFF
+  rgb_bands: [B04, B03, B02]          # which bands to use for RGB previews
+
+  source_resolution_m: 10.0           # native Sentinel-2 GSD
+  target_resolution_m: 2.5            # 10 / scale  -> below the 4 m requirement
+
+  # Reflectance scaling. Sentinel-2 L2A ships as uint16 DN with
+  # reflectance = DN / 10000. We normalise to [0, 1] and clip.
+  dn_scale: 10000.0
+  clip_reflectance: [0.0, 1.0]
+
+  nodata_value: 0                     # used when the GeoTIFF declares none
+  nodata_fill: 0.0                    # value written into normalised arrays
+
+  raw_dir: data/raw
+  processed_dir: data/processed
+  patch_dir: data/patches
+  reference_dir: data/reference
+
+# ---------------------------------------------------------------------
+# Patch extraction (Phase 1 + 2)
+# ---------------------------------------------------------------------
+patches:
+  scale: 4                            # 10 m -> 2.5 m
+  hr_patch_size: 128                  # HR tile edge in pixels (LR = 128/4 = 32)
+  stride: 96                          # overlap = 32 px, keeps edge context
+  # Reject tiles that are mostly nodata or near-constant (cloud / water fill).
+  max_nodata_fraction: 0.10
+  min_std: 0.002
+  max_patches: 20000                  # hard cap, keeps prep bounded
+  val_fraction: 0.15
+  # Degradation used to synthesise the LR input from the HR reference.
+  degradation:
+    kernel: gaussian                  # gaussian | bicubic | box
+    gaussian_sigma: 0.8               # ~ MTF blur before decimation
+    downsample: area                  # area | bicubic  (area == box average)
+    noise_std: 0.0                    # additive gaussian noise on LR, in [0,1]
+
+# ---------------------------------------------------------------------
+# Model (Phase 4)
+# ---------------------------------------------------------------------
+model:
+  name: edsr_lite                     # edsr_lite | bicubic | (future) swinir
+  scale: 4
+  in_channels: 4                      # must equal len(data.bands)
+  out_channels: 4
+  num_features: 64
+  num_blocks: 12
+  res_scale: 0.1                      # residual scaling, stabilises deep stacks
+  dropout: 0.10                       # kept live at inference for MC-dropout
+  upsampler: pixelshuffle             # pixelshuffle | nearest_conv
+  global_residual: true               # predict a delta on top of bicubic
+
+# ---------------------------------------------------------------------
+# Loss (Phase 5) — see README "Why each loss term exists"
+# ---------------------------------------------------------------------
+loss:
+  weights:
+    pixel: 1.0                        # L1 — fidelity, dominant term
+    structural: 0.15                  # 1 - SSIM — edges/texture, human-visible
+    spectral: 0.30                    # SAM — per-pixel band-ratio preservation
+    gradient: 0.05                    # edge-map L1 — discourages over-smoothing
+  pixel_type: l1                      # l1 | l2 | charbonnier
+  charbonnier_eps: 1.0e-3
+
+# ---------------------------------------------------------------------
+# Training (Phase 2 + 4)
+# ---------------------------------------------------------------------
+training:
+  epochs: 40
+  batch_size: 16
+  num_workers: 4
+  lr: 2.0e-4
+  weight_decay: 0.0
+  betas: [0.9, 0.999]
+  scheduler: cosine                   # cosine | step | none
+  min_lr: 1.0e-6
+  grad_clip: 1.0
+  augment: true                       # flips + 90 deg rotations (D4 group)
+  amp: true                           # mixed precision when CUDA is present
+  channels_last: true
+  compile: false                      # torch.compile; slow first step, faster after
+  log_every: 20
+  checkpoint_dir: checkpoints
+  save_best_on: psnr                  # psnr | loss
+
+# ---------------------------------------------------------------------
+# Inference (Phase 7)
+# ---------------------------------------------------------------------
+inference:
+  tile_size: 256                      # LR-space tile edge
+  tile_overlap: 32                    # LR-space overlap, blended with a Hann window
+  batch_size: 4
+  output_dtype: uint16                # uint16 | float32
+  output_dn_scale: 10000.0            # inverse of data.dn_scale for uint16 output
+  compress: deflate
+
+# ---------------------------------------------------------------------
+# Uncertainty (Phase 8)
+# ---------------------------------------------------------------------
+uncertainty:
+  # Default is `ensemble` (geometric self-ensembling over the D4 symmetries).
+  # Measured on the reference model, spread by method was:
+  #     mc_dropout    1.6e-08   <- degenerate, carries no signal
+  #     ensemble      7.0e-04
+  #     reprojection  1.4e-03
+  # mc_dropout collapses here because dropout sits inside residual blocks that
+  # are scaled by res_scale and added to a bicubic base: the residual branch is
+  # small, so perturbing it barely moves the output. It becomes useful again
+  # for a model trained long enough to carry real signal in that branch.
+  # `reprojection` is the most informative for a lightly-trained model and is
+  # always computed alongside whichever method is selected.
+  method: ensemble                    # mc_dropout | ensemble | reprojection | none
+  passes: 8
+  # MC-dropout spread is a *relative* indicator of model disagreement,
+  # NOT a calibrated probability. See README "Uncertainty".
+  normalise: percentile               # percentile | minmax | none
+  percentile_clip: [1.0, 99.0]
+
+# ---------------------------------------------------------------------
+# Evaluation (Phase 3 + 6)
+# ---------------------------------------------------------------------
+evaluation:
+  metrics: [psnr, ssim, rmse, sam, ergas]
+  data_range: 1.0                     # arrays are normalised reflectance
+  ergas_ratio: 4                      # = scale factor, per Wald's protocol
+  border_crop: 4                      # ignore boundary pixels in metrics
+  results_dir: outputs/evaluation
+
+# ---------------------------------------------------------------------
+# Downstream application (Phase 9)
+# ---------------------------------------------------------------------
+application:
+  task: land_cover
+  method: kmeans                      # unsupervised fallback when no labels exist
+  n_classes: 5
+  class_names: [water, vegetation, bare_soil, built_up, other]
+  use_ndvi: true                      # NDVI/NDWI indices as extra features
+  use_ndwi: true
+  labels_path: null                   # set to a rasterised label GeoTIFF for a
+                                      # supervised, quantitatively valid experiment
+  results_dir: outputs/application
+
+# ---------------------------------------------------------------------
+# Dashboard (Phase 10 + 11)
+# ---------------------------------------------------------------------
+dashboard:
+  max_upload_mb: 400
+  preview_max_dim: 1024               # downsample previews for browser rendering
+  stretch: percentile                 # percentile | minmax  (display only)
+  stretch_percentiles: [2.0, 98.0]
+  disclaimer: >
+    Super-resolved imagery contains AI-inferred information and should not be
+    interpreted as direct high-resolution observation without validation.
