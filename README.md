@@ -27,6 +27,10 @@ land-cover experiment that tests whether the super-resolution actually helps.
 12. [Limitations](#12-limitations)
 13. [Future improvements](#13-future-improvements)
 
+**See also:** [`context.md`](context.md) — the project thesis, scientific
+constraints and roadmap · [`docs/gpu-runbook.md`](docs/gpu-runbook.md) — moving a
+run onto the NVIDIA DGX B200.
+
 ---
 
 ## 1. Problem statement
@@ -108,9 +112,14 @@ flowchart TD
 
 ```
 sih142-satellite-sr/
-├── configs/config.yaml          single source of truth for every stage
+├── context.md                   project thesis, constraints, roadmap
+├── configs/
+│   ├── config.yaml              single source of truth for every stage
+│   └── profiles/                hardware overlays (cpu, dgx_b200)
+├── docs/gpu-runbook.md          running on the NVIDIA DGX B200
 ├── src/
 │   ├── config.py                config loading + cross-field validation
+│   ├── compute.py               device selection, precision, torch tuning
 │   ├── data/
 │   │   ├── geotiff.py           windowed I/O, transform arithmetic, validation
 │   │   ├── preprocessing.py     normalisation, nodata, degradation, patching
@@ -130,7 +139,7 @@ sih142-satellite-sr/
 │   └── applications/urban_mapping.py
 ├── scripts/                     the five CLI entry points
 ├── app/dashboard.py             Streamlit UI
-└── tests/                       293 tests incl. an end-to-end smoke test
+└── tests/                       318 tests incl. an end-to-end smoke test
 ```
 
 ### Three design decisions worth knowing
@@ -224,7 +233,7 @@ git clone <repo> && cd sih142-satellite-sr
 python3.12 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest -q                          # 293 tests, ~5 min on CPU
+pytest -q                          # 318 tests, ~25 s on CPU
 ```
 
 CUDA is used automatically when available. For a GPU build matched to your driver:
@@ -273,6 +282,37 @@ python scripts/train.py
 Useful overrides: `--epochs`, `--batch-size`, `--lr`, `--workers`, `--device`, `--no-amp`,
 `--model bicubic` (to sanity-check the plumbing without training).
 
+### CPU first, by default
+
+`configs/config.yaml` ships with `compute.device: cpu`, and the batch size, epoch
+count and worker count are sized for a laptop. This is deliberate — a fresh clone
+behaves identically on every machine, and nobody discovers halfway through a run
+that they were silently on a GPU whose driver is too old to actually work.
+
+Opting into an accelerator is an explicit act. Device precedence is
+**`--device` → `compute.device` → `auto`**.
+
+### Hardware profiles
+
+A profile is a small YAML *overlay* merged on top of the base config:
+
+```bash
+python scripts/train.py --profile cpu        # force CPU even where a GPU exists
+python scripts/train.py --profile dgx_b200   # NVIDIA DGX B200
+```
+
+`configs/profiles/dgx_b200.yaml` holds only what differs — device, precision,
+batch size, worker count, patch geometry — and inherits the rest, so the two can
+never drift apart the way two full copies of the config would. All four scripts
+accept `--profile`.
+
+A profile may only touch *hardware* keys. A test asserts that no profile
+overrides `data`, `loss` or `evaluation`, because **changing where a run executes
+must never silently change what is being measured.**
+
+Full instructions for the college cluster, including the Blackwell `sm_100`
+PyTorch trap, are in [`docs/gpu-runbook.md`](docs/gpu-runbook.md).
+
 ### The loss, and why each term is there
 
 ```
@@ -297,11 +337,18 @@ than multiplied by zero, so disabling it also removes its compute cost.
 
 ### Performance notes
 
-Mixed precision (CUDA only, ~2× throughput; reflectance in `[0,1]` sits safely inside fp16's
-range), `channels_last` memory format for tensor cores, cuDNN autotuning (every training tile has
-identical shape, so the search amortises immediately), cosine LR annealing, and
-`zero_grad(set_to_none=True)`. Validation metrics are computed in torch on-device rather than
-round-tripping through NumPy.
+Mixed precision (CUDA only, ~2× throughput), `channels_last` memory format for tensor cores,
+cuDNN autotuning (every training tile has identical shape, so the search amortises immediately),
+cosine LR annealing, and `zero_grad(set_to_none=True)`. Validation metrics are computed in torch
+on-device rather than round-tripping through NumPy.
+
+`compute.amp_dtype: auto` prefers **bf16** wherever the hardware supports it. bf16 carries fp32's
+exponent range, so it needs no loss scaling and cannot silently overflow — worth more here than
+fp16's extra mantissa bit, given reflectance already lives in `[0, 1]`. The GradScaler is engaged
+only for fp16.
+
+Autocast stays CUDA-only. CPU autocast is bf16-only and, without AVX512-BF16, is usually *slower*
+than plain fp32 — enabling it by default would be a pessimisation dressed up as an optimisation.
 
 ---
 
@@ -568,7 +615,7 @@ Downstream land-cover classification (same centroids applied to both products):
 ## Testing
 
 ```bash
-pytest -q                        # 293 tests
+pytest -q                        # 318 tests
 pytest tests/test_end_to_end.py  # the full acceptance sequence on synthetic data
 ```
 

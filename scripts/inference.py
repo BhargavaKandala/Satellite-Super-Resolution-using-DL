@@ -37,6 +37,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--input", required=True, help="Sentinel-2 GeoTIFF")
     parser.add_argument("--config", default=None)
+    parser.add_argument(
+        "--profile", default=None, help="hardware overlay, e.g. cpu | dgx_b200"
+    )
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--device", default=None, help="cuda | cpu")
@@ -54,14 +57,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from src.compute import configure_torch, describe_device, resolve_device
     from src.data.geotiff import read_info, validate_geospatial, write_superres
     from src.inference.predict import (
         InferenceStats,
         check_overlap,
-        describe_device,
         load_checkpoint,
         read_scene,
-        resolve_device,
         super_resolve_array,
         super_resolve_file,
         write_uncertainty,
@@ -69,7 +71,11 @@ def main(argv: list[str] | None = None) -> int:
     from src.models import build_model
 
     args = parse_args(argv)
-    cfg = load_config(args.config)
+    try:
+        cfg = load_config(args.config, args.profile)
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     set_seed(int(cfg.project.seed))
 
     input_path = Path(args.input)
@@ -82,11 +88,18 @@ def main(argv: list[str] | None = None) -> int:
     tile_size = args.tile_size or int(cfg.inference.tile_size)
     overlap = args.overlap if args.overlap is not None else int(cfg.inference.tile_overlap)
     batch_size = args.batch_size or int(cfg.inference.batch_size)
-    device = resolve_device(args.device)
+    try:
+        device = resolve_device(args.device, cfg)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    compute_notes = configure_torch(cfg, device)
 
     print("=" * 70)
     print("  INFERENCE")
     print("=" * 70)
+    for note in compute_notes:
+        print(f"note: {note}")
 
     src_info = read_info(input_path)
     if src_info.count < max(band_indices):

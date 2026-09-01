@@ -1,0 +1,24 @@
+# CPU profile — explicit form of what configs/config.yaml already defaults to.
+#
+#     python scripts/train.py --profile cpu
+#
+# Useful mainly to force CPU on a machine that has a working GPU, e.g. to
+# reproduce a laptop result or to keep the GPU free for someone else.
+
+compute:
+  device: cpu
+  threads: auto        # set an integer to leave cores free for other work
+  amp_dtype: auto
+  matmul_precision: high
+
+training:
+  epochs: 20
+  batch_size: 8
+  num_workers: 2
+  amp: false           # inert on CPU anyway; false makes that visible in logs
+  channels_last: false
+  compile: false       # compile's warm-up cost rarely pays back on CPU
+
+inference:
+  tile_size: 256
+  batch_size: 2

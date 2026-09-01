@@ -12,6 +12,22 @@ project:
   seed: 42
 
 # ---------------------------------------------------------------------
+# Compute — CPU is the committed default
+# ---------------------------------------------------------------------
+# Everything below is sized so that a fresh clone trains and runs on a
+# laptop CPU. To use an accelerator, layer a profile on top rather than
+# editing this block:
+#
+#     python scripts/train.py --profile dgx_b200
+#
+# See configs/profiles/ and docs/gpu-runbook.md.
+compute:
+  device: cpu                         # cpu | cuda | cuda:0 | auto
+  threads: auto                       # auto = torch default; else an integer
+  amp_dtype: auto                     # auto | bf16 | fp16 (CUDA only)
+  matmul_precision: high              # highest | high | medium | none
+
+# ---------------------------------------------------------------------
 # Sensor / data description
 # ---------------------------------------------------------------------
 data:
@@ -88,9 +104,11 @@ loss:
 # Training (Phase 2 + 4)
 # ---------------------------------------------------------------------
 training:
-  epochs: 40
-  batch_size: 16
-  num_workers: 4
+  # CPU-sized defaults. The dgx_b200 profile raises these substantially —
+  # do not tune them here for GPU runs, override them in the profile.
+  epochs: 20
+  batch_size: 8
+  num_workers: 2
   lr: 2.0e-4
   weight_decay: 0.0
   betas: [0.9, 0.999]
@@ -98,7 +116,9 @@ training:
   min_lr: 1.0e-6
   grad_clip: 1.0
   augment: true                       # flips + 90 deg rotations (D4 group)
-  amp: true                           # mixed precision when CUDA is present
+  # amp and channels_last are CUDA-only fast paths: both are ignored on CPU,
+  # so leaving them on costs nothing locally and needs no edit on the GPU.
+  amp: true                           # mixed precision; dtype from compute.amp_dtype
   channels_last: true
   compile: false                      # torch.compile; slow first step, faster after
   log_every: 20

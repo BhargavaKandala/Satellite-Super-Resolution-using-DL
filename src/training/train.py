@@ -1,12 +1,14 @@
 """Phase 4 + 5: the training loop.
 
+The default device is **CPU** — see :mod:`src.compute` for why, and for how to
+opt into an accelerator.
+
 Performance choices, and why they are safe here
 -----------------------------------------------
-*Mixed precision* (CUDA only). Activations run in fp16/bf16 while the master
-weights stay fp32. Roughly 2x throughput and half the memory on the RTX-class
-GPUs this is aimed at. Reflectance in ``[0, 1]`` sits comfortably inside fp16's
-range, so the usual overflow risk does not apply; loss scaling still guards the
-gradients.
+*Mixed precision* (CUDA only). Activations run in bf16/fp16 while the master
+weights stay fp32: roughly 2x throughput and half the memory. bf16 is preferred
+wherever the hardware supports it, because it keeps fp32's exponent range and so
+needs no loss scaling; the GradScaler is only engaged for fp16.
 
 *channels_last memory format*. Convolutions on tensor cores want NHWC. For a
 model that is almost entirely 3x3 convolutions this is a large win and changes
@@ -105,12 +107,12 @@ class Trainer:
         device: torch.device | None = None,
         checkpoint_dir: Path | None = None,
     ):
-        from ..inference.predict import describe_device, resolve_device
+        from ..compute import amp_enabled, autocast_dtype, describe_device, resolve_device
 
         self.cfg = cfg
         self.train_loader = train_loader
         self.val_loader = val_loader
-        self.device = device or resolve_device()
+        self.device = device or resolve_device(cfg=cfg)
         self.device_name = describe_device(self.device)
 
         self.model = build_model(cfg).to(self.device)
@@ -131,8 +133,15 @@ class Trainer:
         self.epochs = int(cfg.training.epochs)
         self.scheduler = self._build_scheduler()
 
-        self.amp = bool(cfg.training.amp) and self.device.type == "cuda"
-        self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp)
+        self.amp = amp_enabled(cfg, self.device)
+        self.amp_dtype = autocast_dtype(
+            self.device, cfg.get("compute", {}).get("amp_dtype", "auto")
+        )
+        # Loss scaling exists to stop fp16 gradients underflowing. bf16 keeps
+        # fp32's exponent range, so the scaler is dead weight there.
+        self.scaler = torch.amp.GradScaler(
+            "cuda", enabled=self.amp and self.amp_dtype is torch.float16
+        )
         self.grad_clip = float(cfg.training.grad_clip)
 
         self.checkpoint_dir = Path(
@@ -177,7 +186,9 @@ class Trainer:
             # slightly faster and lowers peak memory.
             self.optimizer.zero_grad(set_to_none=True)
 
-            with torch.autocast(device_type=self.device.type, enabled=self.amp):
+            with torch.autocast(
+                device_type=self.device.type, dtype=self.amp_dtype, enabled=self.amp
+            ):
                 pred = self.model(lr)
                 loss, parts = self.criterion(pred, hr)
 
@@ -220,7 +231,9 @@ class Trainer:
         for batch in self.val_loader:
             lr = batch["lr"].to(self.device, non_blocking=True)
             hr = batch["hr"].to(self.device, non_blocking=True)
-            with torch.autocast(device_type=self.device.type, enabled=self.amp):
+            with torch.autocast(
+                device_type=self.device.type, dtype=self.amp_dtype, enabled=self.amp
+            ):
                 pred = self.model(lr)
             pred = pred.float()
             loss, _ = self.criterion(pred, hr)
@@ -235,7 +248,10 @@ class Trainer:
         return {k: v / seen for k, v in sums.items()} if seen else {}
 
     def fit(self) -> list[EpochResult]:
-        print(f"device: {self.device_name}")
+        precision = (
+            str(self.amp_dtype).replace("torch.", "") if self.amp else "fp32"
+        )
+        print(f"device: {self.device_name}  |  precision: {precision}")
         print(f"model:  {type(self.model).__name__}", end="")
         if hasattr(self.model, "num_parameters"):
             print(f" ({self.model.num_parameters():,} parameters)", end="")

@@ -18,6 +18,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "configs" / "config.yaml"
+PROFILE_DIR = REPO_ROOT / "configs" / "profiles"
 
 
 class Config(Mapping):
@@ -92,17 +93,56 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return base
 
 
-def load_config(path: str | os.PathLike[str] | None = None) -> Config:
-    """Load the YAML config, falling back to ``configs/config.yaml``."""
+def _read_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        raise FileNotFoundError(f"config not found: {path}")
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"{path.name}: config root must be a mapping, got {type(data).__name__}"
+        )
+    return data
+
+
+def available_profiles() -> list[str]:
+    """Names of the hardware profiles shipped in ``configs/profiles/``."""
+    if not PROFILE_DIR.is_dir():
+        return []
+    return sorted(p.stem for p in PROFILE_DIR.glob("*.yaml"))
+
+
+def resolve_profile(name: str | os.PathLike[str]) -> Path:
+    """Accept either a bare profile name or a path to a YAML overlay."""
+    candidate = Path(name)
+    if candidate.suffix in (".yaml", ".yml"):
+        path = candidate if candidate.is_absolute() else (REPO_ROOT / candidate)
+        if path.exists():
+            return path
+    path = PROFILE_DIR / f"{Path(name).stem}.yaml"
+    if not path.exists():
+        known = ", ".join(available_profiles()) or "none installed"
+        raise FileNotFoundError(f"unknown profile {str(name)!r}; available: {known}")
+    return path
+
+
+def load_config(
+    path: str | os.PathLike[str] | None = None,
+    profile: str | os.PathLike[str] | None = None,
+) -> Config:
+    """Load the YAML config, optionally deep-merging a hardware profile on top.
+
+    Profiles are *overlays*, not replacements: ``configs/profiles/dgx_b200.yaml``
+    holds only the handful of keys that differ from the CPU baseline, so the two
+    cannot drift apart the way two full copies of the config would.
+    """
     cfg_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     if not cfg_path.is_absolute():
         cfg_path = (REPO_ROOT / cfg_path).resolve()
-    if not cfg_path.exists():
-        raise FileNotFoundError(f"config not found: {cfg_path}")
-    with cfg_path.open("r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"config root must be a mapping, got {type(data).__name__}")
+
+    data = _read_yaml(cfg_path)
+    if profile:
+        data = _deep_merge(data, _read_yaml(resolve_profile(profile)))
     _validate(data)
     return Config(data)
 
@@ -136,6 +176,18 @@ def _validate(data: dict[str, Any]) -> None:
     if hr is not None and patch_scale and hr % patch_scale != 0:
         raise ValueError(
             f"patches.hr_patch_size ({hr}) must be divisible by scale ({patch_scale})"
+        )
+
+    compute = data.get("compute", {})
+    device = str(compute.get("device", "cpu")).strip().lower()
+    if device not in ("cpu", "auto") and not device.startswith("cuda"):
+        raise ValueError(
+            f"unknown compute.device {device!r}; expected cpu | cuda | cuda:N | auto"
+        )
+    amp_dtype = str(compute.get("amp_dtype", "auto")).strip().lower()
+    if amp_dtype not in ("auto", "bf16", "fp16"):
+        raise ValueError(
+            f"unknown compute.amp_dtype {amp_dtype!r}; expected auto | bf16 | fp16"
         )
 
     src_res = data.get("data", {}).get("source_resolution_m")

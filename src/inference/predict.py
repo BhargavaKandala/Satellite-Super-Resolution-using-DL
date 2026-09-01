@@ -34,27 +34,24 @@ import torch
 import torch.nn as nn
 from rasterio.windows import Window
 
+from ..compute import autocast_dtype, describe_device, resolve_device
 from ..data.geotiff import RasterInfo, read_info, read_mask, superres_info, write_raster
 from ..data.preprocessing import denormalize_reflectance, normalize_reflectance
 
-
-# ---------------------------------------------------------------------------
-# Device
-# ---------------------------------------------------------------------------
-def resolve_device(preferred: str | None = None) -> torch.device:
-    """Pick CUDA when available, otherwise CPU. ``preferred`` overrides."""
-    if preferred:
-        return torch.device(preferred)
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-def describe_device(device: torch.device) -> str:
-    if device.type == "cuda" and torch.cuda.is_available():
-        index = device.index or 0
-        name = torch.cuda.get_device_name(index)
-        total = torch.cuda.get_device_properties(index).total_memory / 1e9
-        return f"cuda:{index} ({name}, {total:.1f} GB)"
-    return "cpu"
+# Re-exported so the many existing ``from src.inference.predict import
+# resolve_device`` call sites keep working; the implementations now live in
+# ``src.compute`` alongside the rest of the device/precision policy.
+__all__ = [
+    "autocast_dtype",
+    "check_overlap",
+    "describe_device",
+    "load_checkpoint",
+    "read_scene",
+    "resolve_device",
+    "super_resolve_array",
+    "super_resolve_file",
+    "write_uncertainty",
+]
 
 
 def check_overlap(overlap: int, num_blocks: int) -> list[str]:
@@ -110,7 +107,10 @@ def _forward(
 ) -> torch.Tensor:
     if channels_last and device.type == "cuda":
         batch = batch.to(memory_format=torch.channels_last)
-    with torch.autocast(device_type=device.type, enabled=amp and device.type == "cuda"):
+    enabled = amp and device.type == "cuda"
+    with torch.autocast(
+        device_type=device.type, dtype=autocast_dtype(device), enabled=enabled
+    ):
         out = model(batch)
     return out.float()
 

@@ -1,0 +1,43 @@
+# NVIDIA DGX B200 profile.
+#
+#     python scripts/prepare_dataset.py --profile dgx_b200
+#     python scripts/train.py           --profile dgx_b200
+#
+# One B200 carries 180 GB of HBM3e, so memory is not the constraint here —
+# EDSR-Lite at 1.2 M parameters barely registers. The bottleneck moves to the
+# input pipeline, which is why num_workers rises far more than batch_size does.
+#
+# IMPORTANT — B200 is Blackwell, compute capability sm_100. A plain
+# `pip install torch` may fetch a build with no sm_100 kernels, which fails at
+# the first convolution with "no kernel image is available for execution on the
+# device". src.compute.check_cuda_build detects this at startup and says so.
+# See docs/gpu-runbook.md for the container/wheel options.
+
+compute:
+  device: cuda
+  threads: auto
+  amp_dtype: bf16      # Blackwell has native bf16; no loss scaling needed
+  matmul_precision: high
+
+# Larger tiles give the network more spatial context per sample. This changes
+# the prepared dataset, so re-run prepare_dataset.py with the same profile.
+patches:
+  hr_patch_size: 192   # LR = 48; still divisible by scale 4
+  stride: 128
+  max_patches: 200000
+
+training:
+  epochs: 200
+  batch_size: 64
+  num_workers: 16
+  lr: 4.0e-4           # scaled up with the larger batch
+  amp: true
+  channels_last: true
+  compile: true        # worth the warm-up over a 200-epoch run
+
+inference:
+  tile_size: 512
+  batch_size: 16
+
+uncertainty:
+  passes: 16           # cheap on this hardware; a steadier spread estimate

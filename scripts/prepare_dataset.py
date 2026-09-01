@@ -38,6 +38,11 @@ COPY_CHUNK = 256  # patches per chunk when trimming the preallocated array
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default=None, help="path to config.yaml")
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="hardware overlay, e.g. cpu | dgx_b200 (changes patch geometry)",
+    )
     parser.add_argument("--input", nargs="*", default=None, help="scene GeoTIFF(s)")
     parser.add_argument("--output", default=None, help="patch output directory")
     parser.add_argument(
@@ -143,7 +148,11 @@ def make_sample_input(cfg, reference: Path, scale: int) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    cfg = load_config(args.config)
+    try:
+        cfg = load_config(args.config, args.profile)
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     set_seed(int(cfg.project.seed))
 
     patch_size = args.patch_size or int(cfg.patches.hr_patch_size)

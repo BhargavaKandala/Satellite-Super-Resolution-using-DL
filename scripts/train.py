@@ -23,6 +23,9 @@ from src.data.patch_dataset import build_dataloaders, read_manifest
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default=None)
+    parser.add_argument(
+        "--profile", default=None, help="hardware overlay, e.g. cpu | dgx_b200"
+    )
     parser.add_argument("--patches", default=None, help="prepared patch directory")
     parser.add_argument("--checkpoints", default=None)
     parser.add_argument("--epochs", type=int, default=None)
@@ -58,12 +61,26 @@ def apply_overrides(cfg, args):
 def main(argv: list[str] | None = None) -> int:
     import torch
 
-    from src.inference.predict import check_overlap, resolve_device
+    from src.compute import configure_torch, resolve_device
+    from src.inference.predict import check_overlap
     from src.training.train import Trainer
 
     args = parse_args(argv)
-    cfg = apply_overrides(load_config(args.config), args)
+    try:
+        cfg = apply_overrides(load_config(args.config, args.profile), args)
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     set_seed(int(cfg.project.seed))
+
+    # Resolved before any dataset work: a bad --device should fail in a second,
+    # not after several minutes of memmapping patches.
+    try:
+        device = resolve_device(args.device, cfg)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    compute_notes = configure_torch(cfg, device)
 
     patch_dir = Path(args.patches) if args.patches else cfg.get_path("data.patch_dir")
     try:
@@ -90,6 +107,8 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 70)
     print("  TRAIN")
     print("=" * 70)
+    for note in compute_notes:
+        print(f"note: {note}")
 
     train_loader, val_loader = build_dataloaders(patch_dir, cfg)
     if val_loader is None:
@@ -100,7 +119,6 @@ def main(argv: list[str] | None = None) -> int:
     ):
         print(f"warning: {warning}")
 
-    device = resolve_device(args.device)
     checkpoint_dir = (
         Path(args.checkpoints) if args.checkpoints else cfg.get_path("training.checkpoint_dir")
     )

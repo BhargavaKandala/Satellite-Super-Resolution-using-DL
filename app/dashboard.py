@@ -136,9 +136,17 @@ def sidebar(cfg):
     default = next((i for i, o in enumerate(options) if o.endswith("best.pth")), 0)
     checkpoint = st.sidebar.selectbox("Checkpoint", options, index=default)
 
-    device_choice = st.sidebar.selectbox("Device", ["auto", "cuda", "cpu"], index=0)
-    device_str = None if device_choice == "auto" else device_choice
-    st.sidebar.caption(f"Resolved: `{describe_device(resolve_device(device_str))}`")
+    # The config default leads, so the dashboard agrees with the CLI about what
+    # "default" means instead of quietly grabbing a GPU the scripts would not.
+    choices = ["config default", "auto", "cuda", "cpu"]
+    device_choice = st.sidebar.selectbox("Device", choices, index=0)
+    device_str = None if device_choice == "config default" else device_choice
+    try:
+        st.sidebar.caption(
+            f"Resolved: `{describe_device(resolve_device(device_str, cfg))}`"
+        )
+    except RuntimeError as exc:
+        st.sidebar.error(str(exc))
 
     st.sidebar.subheader("Uncertainty")
     methods = ["mc_dropout", "ensemble", "reprojection", "none"]
@@ -203,7 +211,7 @@ def run_pipeline(
         lr = observed
         report("**Reference-free** — no ground truth; metrics will be omitted")
 
-    device = resolve_device(device_str)
+    device = resolve_device(device_str, cfg)
     use_model = checkpoint != "bicubic baseline only"
     if use_model:
         model, payload, device = get_model(checkpoint, device_str or "")

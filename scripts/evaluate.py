@@ -24,6 +24,9 @@ from src.config import load_config, set_seed
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", default=None)
+    parser.add_argument(
+        "--profile", default=None, help="hardware overlay, e.g. cpu | dgx_b200"
+    )
     parser.add_argument("--input", nargs="*", default=None, help="scene GeoTIFF(s)")
     parser.add_argument("--reference", default=None, help="co-registered high-res reference")
     parser.add_argument("--checkpoint", default=None, help="model checkpoint (default: checkpoints/best.pth)")
@@ -40,13 +43,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from src.compute import configure_torch, resolve_device
     from src.evaluation.evaluate import evaluate_scene, format_report
-    from src.inference.predict import load_checkpoint, resolve_device
+    from src.inference.predict import load_checkpoint
 
     args = parse_args(argv)
-    cfg = load_config(args.config)
-    set_seed(int(cfg.project.seed))
-    device = resolve_device(args.device)
+    try:
+        cfg = load_config(args.config, args.profile)
+        set_seed(int(cfg.project.seed))
+        device = resolve_device(args.device, cfg)
+    except (FileNotFoundError, RuntimeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    for note in configure_torch(cfg, device):
+        print(f"note: {note}")
 
     scenes = _discover(cfg, args.input)
     if not scenes:
