@@ -6,6 +6,16 @@ Takes a 10 m Sentinel-2 GeoTIFF and produces a **2.5 m** super-resolved GeoTIFF,
 an uncertainty map, spectral-consistency metrics, geospatial validation, and a downstream
 land-cover experiment that tests whether the super-resolution actually helps.
 
+**Measured on real Sentinel-2** (Hyderabad, 2024-04-27, 0.00 % cloud) — improves on every metric
+against the bicubic control, *and* on the downstream task:
+
+| | PSNR (dB) ↑ | SSIM ↑ | SAM (°) ↓ | ERGAS ↓ | Land-cover accuracy ↑ |
+|---|---|---|---|---|---|
+| Bicubic baseline | 30.26 | 0.634 | 4.467 | 4.927 | 0.6303 |
+| **AI super-resolution** | **32.04** | **0.753** | **3.765** | **4.038** | **0.6946** |
+
+[Full results, and the two limits on how they may be quoted →](#real-sentinel-2-run)
+
 > ⚠️ **Super-resolved imagery contains AI-inferred information and should not be interpreted as
 > direct high-resolution observation without validation.**
 
@@ -599,34 +609,6 @@ baseline, and a visual comparison in the dashboard.
 > observation to `./sample.tif`. Use `sample.tif` for inference and the dashboard — feeding a
 > 2.5 m reference to `inference.py` would super-resolve an already-fine image.
 
-### v1 reference run
-
-Reproduced from the commands above (3 synthetic 1024² scenes → 363 patches, 309 train / 54 val,
-EDSR-Lite with 1,223,300 parameters, 12 epochs, CPU, 17–20 s/epoch):
-
-| | PSNR (dB) ↑ | SSIM ↑ | RMSE ↓ | SAM (°) ↓ | ERGAS ↓ |
-|---|---|---|---|---|---|
-| Bicubic baseline | 34.97 | 0.8447 | 0.0178 | 2.791 | 2.772 |
-| **AI super-resolution** | **36.40** | **0.8707** | **0.0151** | **2.622** | **2.294** |
-| Δ | **+1.43** | **+0.026** | **−0.0027** | **−0.169** | **−0.478** |
-
-Downstream land-cover classification (same centroids applied to both products):
-
-| | Overall accuracy | mIoU |
-|---|---|---|
-| Bicubic baseline | 0.9708 | 0.8954 |
-| **AI super-resolution** | **0.9879** | **0.9527** |
-
-> Expect **run-to-run variance of roughly ±0.3 dB** on a retrain. `set_seed` enables cuDNN
-> autotuning and the dataloader augments in worker processes, so runs are reproducible in
-> distribution rather than bitwise. Re-run `evaluate.py` after any retrain rather than quoting a
-> figure from an earlier checkpoint — the bicubic column is deterministic and should not move.
-
-> **These numbers come from synthetic scenes.** They demonstrate that the pipeline is wired
-> correctly end to end — that the model beats its baseline on both image quality *and* a
-> downstream task, without spectral degradation. They are **not** a measurement of scientific
-> performance on real Sentinel-2 imagery. See the real-data run below.
-
 ### Real Sentinel-2 run
 
 Scene `S2A_43QHV_20240427_0_L2A` — Hyderabad, 2024-04-27, **0.00 % cloud**, processing baseline
@@ -667,6 +649,39 @@ plateaued, so a longer schedule should gain more.
 > from truly finer imagery, **not** accuracy against surveyed ground truth. The *relative*
 > improvement is the defensible claim; the absolute figure is not an accuracy against reality.
 > Rasterised labels (Bhuvan LULC, ESA WorldCover) via `application.labels_path` would fix this.
+
+
+### Synthetic control run
+
+Kept as a control: the same pipeline on generated scenes, which is how the
+system was developed before real data was available. Useful for checking that
+behaviour is consistent across both, **not** for quoting as a result.
+
+Reproduced from the commands above (3 synthetic 1024² scenes → 363 patches, 309 train / 54 val,
+EDSR-Lite with 1,223,300 parameters, 12 epochs, CPU, 17–20 s/epoch):
+
+| | PSNR (dB) ↑ | SSIM ↑ | RMSE ↓ | SAM (°) ↓ | ERGAS ↓ |
+|---|---|---|---|---|---|
+| Bicubic baseline | 34.97 | 0.8447 | 0.0178 | 2.791 | 2.772 |
+| **AI super-resolution** | **36.40** | **0.8707** | **0.0151** | **2.622** | **2.294** |
+| Δ | **+1.43** | **+0.026** | **−0.0027** | **−0.169** | **−0.478** |
+
+Downstream land-cover classification (same centroids applied to both products):
+
+| | Overall accuracy | mIoU |
+|---|---|---|
+| Bicubic baseline | 0.9708 | 0.8954 |
+| **AI super-resolution** | **0.9879** | **0.9527** |
+
+> Expect **run-to-run variance of roughly ±0.3 dB** on a retrain. `set_seed` enables cuDNN
+> autotuning and the dataloader augments in worker processes, so runs are reproducible in
+> distribution rather than bitwise. Re-run `evaluate.py` after any retrain rather than quoting a
+> figure from an earlier checkpoint — the bicubic column is deterministic and should not move.
+
+> **These numbers come from synthetic scenes.** They demonstrate that the pipeline is wired
+> correctly end to end — that the model beats its baseline on both image quality *and* a
+> downstream task, without spectral degradation. They are **not** a measurement of scientific
+> performance on real Sentinel-2 imagery. See the real-data run below.
 
 ## Testing
 
