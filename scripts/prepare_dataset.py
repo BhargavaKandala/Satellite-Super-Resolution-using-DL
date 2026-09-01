@@ -131,7 +131,14 @@ def make_sample_input(cfg, reference: Path, scale: int) -> Path:
         dtype="uint16",
         transform=scaled_transform(info.transform, 1.0 / scale),
     )
-    path = REPO_ROOT / "sample.tif"
+    # Written beside the repo root for the documented `--input sample.tif`, but
+    # only when the config actually points at the repo's own data directory.
+    # A redirected raw_dir (every test does this) keeps its sample local —
+    # otherwise running the test suite silently overwrites the demo input with
+    # whatever tiny scene the test happened to use.
+    raw_dir = cfg.get_path("data.raw_dir")
+    inside_repo = raw_dir.is_relative_to(REPO_ROOT)
+    path = (REPO_ROOT if inside_repo else raw_dir.parent) / "sample.tif"
     write_raster(
         path,
         np.maximum(denormalize_reflectance(coarse, float(cfg.data.dn_scale)), 1),
@@ -175,9 +182,14 @@ def main(argv: list[str] | None = None) -> int:
 
     sample_path = None
     scenes = discover_scenes(cfg, args.input)
-    if not scenes and args.synthetic:
+    if args.synthetic and not scenes:
         print(f"\ngenerating {args.synthetic_scenes} synthetic scene(s):")
         scenes = make_synthetic(cfg, args.synthetic_scenes, args.synthetic_size)
+    if args.synthetic and scenes:
+        # Refreshed on every --synthetic run, not only when the scenes are newly
+        # generated: otherwise the demo input can never be rebuilt without first
+        # deleting data/raw, and a stale sample.tif silently outlives the scenes
+        # it was derived from.
         sample_path = make_sample_input(cfg, scenes[0], int(cfg.patches.scale))
     elif not scenes:
         raw_dir = cfg.get_path("data.raw_dir")

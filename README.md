@@ -147,7 +147,7 @@ sih142-satellite-sr/
 │   └── applications/urban_mapping.py
 ├── scripts/                     the five CLI entry points
 ├── app/dashboard.py             Streamlit UI
-└── tests/                       318 tests incl. an end-to-end smoke test
+└── tests/                       319 tests incl. an end-to-end smoke test
 ```
 
 ### Three design decisions worth knowing
@@ -241,7 +241,7 @@ git clone <repo> && cd sih142-satellite-sr
 python3.12 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest -q                          # 318 tests, ~25 s on CPU
+pytest -q                          # 319 tests, ~25 s on CPU
 ```
 
 CUDA is used automatically when available. For a GPU build matched to your driver:
@@ -628,7 +628,7 @@ Downstream land-cover classification (same centroids applied to both products):
 ## Testing
 
 ```bash
-pytest -q                        # 318 tests
+pytest -q                        # 319 tests
 pytest tests/test_end_to_end.py  # the full acceptance sequence on synthetic data
 ```
 

@@ -158,7 +158,7 @@ precisely how much of it to trust is the harder and more valuable result.
 | 6 | Dashboard | ✅ done |
 | 7 | Presentation | pending |
 
-**The roadmap is not the bottleneck.** Every phase above runs, with 318 passing
+**The roadmap is not the bottleneck.** Every phase above runs, with 319 passing
 tests. The gap is data: v1 trains and evaluates on *synthetic* scenes, which
 demonstrate that the plumbing is correct and prove nothing scientific.
 

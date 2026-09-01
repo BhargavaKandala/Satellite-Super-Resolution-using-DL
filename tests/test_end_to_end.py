@@ -115,6 +115,47 @@ def test_prepare_can_generate_synthetic_data(tmp_path):
     reference = read_info(tmp_path / "raw" / "synthetic_00.tif")
     assert reference.resolution[0] == pytest.approx(2.5)
 
+    # ...and the demo input lands beside the redirected raw dir, not in the repo.
+    assert (tmp_path / "sample.tif").exists()
+
+
+def test_a_redirected_config_does_not_overwrite_the_repo_demo_input(tmp_path):
+    """Regression: the test suite used to clobber the user's own sample.tif.
+
+    ``make_sample_input`` wrote to a hardcoded ``REPO_ROOT / "sample.tif"``
+    regardless of where the config pointed, so running pytest replaced a real
+    demo input with whatever tiny scene a test happened to generate — silently
+    shrinking the live demo to 1/16 of its area.
+    """
+    import prepare_dataset
+    import yaml
+
+    from src.config import REPO_ROOT, load_config
+
+    repo_sample = REPO_ROOT / "sample.tif"
+    before = repo_sample.read_bytes() if repo_sample.exists() else None
+
+    data = load_config().to_dict()
+    data["data"]["raw_dir"] = str(tmp_path / "raw")
+    overrides = tmp_path / "config.yaml"
+    overrides.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    assert prepare_dataset.main(
+        [
+            "--config", str(overrides),
+            "--output", str(tmp_path / "patches"),
+            "--synthetic",
+            "--synthetic-scenes", "1",
+            "--synthetic-size", "256",
+            "--patch-size", "64",
+            "--max-patches", "16",
+        ]
+    ) == 0
+
+    assert (tmp_path / "sample.tif").exists(), "sample must follow the config"
+    after = repo_sample.read_bytes() if repo_sample.exists() else None
+    assert after == before, "a redirected run must not touch the repo's sample.tif"
+
 
 def test_synthetic_mode_also_writes_a_ten_metre_demo_input():
     """`--input sample.tif` must represent the real task: 10 m in, 2.5 m out."""

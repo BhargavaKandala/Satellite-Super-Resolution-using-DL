@@ -22,10 +22,13 @@ That produces, and you must confirm all four exist:
 
 | Artefact | Path |
 |---|---|
+| Demo input, 256×256 @ 10 m | `sample.tif` |
 | Trained checkpoint | `checkpoints/best.pth` |
-| Super-resolved GeoTIFF | `outputs/sample_sr.tif` |
-| Uncertainty GeoTIFF | `outputs/sample_uncertainty.tif` |
-| Metrics report | `outputs/evaluation/` |
+| Super-resolved GeoTIFF, 1024×1024 @ 2.5 m | `outputs/inference/sample_sr.tif` |
+| Uncertainty GeoTIFF | `outputs/inference/sample_uncertainty.tif` |
+| Per-run inference report | `outputs/inference/sample_inference.json` |
+| Metrics | `outputs/evaluation/metrics.csv` + per-scene JSON |
+| Downstream results | `outputs/application/*_landcover.json` |
 
 **Pre-flight checklist:**
 
@@ -103,7 +106,7 @@ The output ends with:
 
 ### Step 3 · Prove it in QGIS (30 s, optional but powerful)
 
-Drag `sample.tif` and `outputs/sample_sr.tif` into QGIS. They overlay perfectly.
+Drag `sample.tif` and `outputs/inference/sample_sr.tif` into QGIS. They overlay perfectly.
 
 > "Same coordinates, four times the detail. This is a real GIS product, not a
 > picture."
@@ -177,10 +180,10 @@ Finish on the warning banner and read it aloud:
 |---|---|
 | Dataset preparation | ~15 s |
 | Training, 12 epochs | ~4 min (17–20 s/epoch) |
-| Inference + uncertainty | 3–10 s |
+| Inference + uncertainty (256² → 1024²) | ~13 s |
 | Evaluation + downstream | ~35 s |
 | Dashboard startup | ~2 s |
-| Full test suite | ~24 s |
+| Full test suite (319 tests) | ~30 s |
 
 **Retraining moves your numbers by roughly ±0.3 dB PSNR** — cuDNN autotuning and
 worker-process augmentation make runs reproducible in distribution, not bitwise.
@@ -207,7 +210,7 @@ remembers a stack trace.
 | Laptop dies | Have the deck and screenshots on a phone |
 
 **The tests are a fallback too.** If a demo fails, `py -m pytest -q` finishing
-with 318 passing in ~24 seconds is a genuinely strong recovery — it shows the
+with 319 passing in ~24 seconds is a genuinely strong recovery — it shows the
 system works and that you engineered it properly.
 
 ---

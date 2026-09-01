@@ -284,7 +284,7 @@ Land-cover classification accuracy
 > and produces a file that opens fine and is silently four times too large on the
 > ground. Six automated checks verify this on every run.
 >
-> 318 tests, including an end-to-end smoke test."
+> 319 tests, including an end-to-end smoke test."
 
 ---
 
