@@ -27,9 +27,14 @@ land-cover experiment that tests whether the super-resolution actually helps.
 12. [Limitations](#12-limitations)
 13. [Future improvements](#13-future-improvements)
 
-**See also:** [`context.md`](context.md) — the project thesis, scientific
-constraints and roadmap · [`docs/gpu-runbook.md`](docs/gpu-runbook.md) — moving a
-run onto the NVIDIA DGX B200.
+**See also**
+
+| Document | For |
+|---|---|
+| [`context.md`](context.md) | Project thesis, scientific constraints, roadmap |
+| [`docs/PITCH.md`](docs/PITCH.md) | Slide-by-slide presentation script + anticipated judge questions |
+| [`docs/DEMO.md`](docs/DEMO.md) | Live demo runbook — exact commands, timings, fallbacks |
+| [`docs/gpu-runbook.md`](docs/gpu-runbook.md) | Running on the NVIDIA DGX B200 |
 
 ---
 
@@ -116,7 +121,10 @@ sih142-satellite-sr/
 ├── configs/
 │   ├── config.yaml              single source of truth for every stage
 │   └── profiles/                hardware overlays (cpu, dgx_b200)
-├── docs/gpu-runbook.md          running on the NVIDIA DGX B200
+├── docs/
+│   ├── PITCH.md                 presentation script + judge Q&A
+│   ├── DEMO.md                  live demo runbook
+│   └── gpu-runbook.md           running on the NVIDIA DGX B200
 ├── src/
 │   ├── config.py                config loading + cross-field validation
 │   ├── compute.py               device selection, precision, torch tuning
@@ -592,20 +600,25 @@ baseline, and a visual comparison in the dashboard.
 ### v1 reference run
 
 Reproduced from the commands above (3 synthetic 1024² scenes → 363 patches, 309 train / 54 val,
-EDSR-Lite with 1,223,300 parameters, 12 epochs, CPU, ~17 s/epoch):
+EDSR-Lite with 1,223,300 parameters, 12 epochs, CPU, 17–20 s/epoch):
 
 | | PSNR (dB) ↑ | SSIM ↑ | RMSE ↓ | SAM (°) ↓ | ERGAS ↓ |
 |---|---|---|---|---|---|
 | Bicubic baseline | 34.97 | 0.8447 | 0.0178 | 2.791 | 2.772 |
-| **AI super-resolution** | **36.11** | **0.8658** | **0.0156** | **2.721** | **2.374** |
-| Δ | **+1.14** | **+0.021** | **−0.0022** | **−0.070** | **−0.398** |
+| **AI super-resolution** | **36.40** | **0.8707** | **0.0151** | **2.622** | **2.294** |
+| Δ | **+1.43** | **+0.026** | **−0.0027** | **−0.169** | **−0.478** |
 
 Downstream land-cover classification (same centroids applied to both products):
 
 | | Overall accuracy | mIoU |
 |---|---|---|
 | Bicubic baseline | 0.9708 | 0.8954 |
-| **AI super-resolution** | **0.9845** | **0.9377** |
+| **AI super-resolution** | **0.9879** | **0.9527** |
+
+> Expect **run-to-run variance of roughly ±0.3 dB** on a retrain. `set_seed` enables cuDNN
+> autotuning and the dataloader augments in worker processes, so runs are reproducible in
+> distribution rather than bitwise. Re-run `evaluate.py` after any retrain rather than quoting a
+> figure from an earlier checkpoint — the bicubic column is deterministic and should not move.
 
 > **These numbers come from synthetic scenes.** They demonstrate that the pipeline is wired
 > correctly end to end — that the model beats its baseline on both image quality *and* a
