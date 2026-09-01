@@ -159,13 +159,15 @@ precisely how much of it to trust is the harder and more valuable result.
 | 7 | Presentation | pending |
 
 **The roadmap is not the bottleneck.** Every phase above runs, with 337 passing
-tests. The gap is data: v1 trains and evaluates on *synthetic* scenes, which
-demonstrate that the plumbing is correct and prove nothing scientific.
+tests, and as of 2026-09-01 it runs on **real Sentinel-2** — scene S2A_43QHV,
+Hyderabad, 2024-04-27, 0.00 % cloud. The model beats bicubic on all five metrics
+and lifts downstream land-cover accuracy by 6.4 points. See the README's
+"Real Sentinel-2 run".
 
 ### The actual critical path
 
-1. **Real Sentinel-2 L2A data** — B04/B03/B02/B08 stacked at 10 m. Until this
-   exists, every metric in the README measures the pipeline, not the science.
+1. ~~**Real Sentinel-2 L2A data**~~ — **done.** One 2048² window over Hyderabad.
+   More scenes, and more varied terrain, would strengthen it further.
 2. **A co-registered high-resolution reference** — unlocks full-resolution
    evaluation, the strongest validation tier.
 3. **Labels for the downstream task** — turns the land-cover experiment from

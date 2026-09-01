@@ -625,7 +625,48 @@ Downstream land-cover classification (same centroids applied to both products):
 > **These numbers come from synthetic scenes.** They demonstrate that the pipeline is wired
 > correctly end to end — that the model beats its baseline on both image quality *and* a
 > downstream task, without spectral degradation. They are **not** a measurement of scientific
-> performance on real Sentinel-2 imagery. Retrain on real data before quoting any figure.
+> performance on real Sentinel-2 imagery. See the real-data run below.
+
+### Real Sentinel-2 run
+
+Scene `S2A_43QHV_20240427_0_L2A` — Hyderabad, 2024-04-27, **0.00 % cloud**, processing baseline
+05.10. A 2048² window (20.5 km) at 10 m imported with
+[`scripts/import_sentinel2.py`](scripts/import_sentinel2.py), giving 441 patches
+(386 train / 55 val). EDSR-Lite, 12 epochs, CPU, ~22 s/epoch. Reproduce with
+[`docs/real-data.md`](docs/real-data.md).
+
+| | PSNR (dB) ↑ | SSIM ↑ | RMSE ↓ | SAM (°) ↓ | ERGAS ↓ |
+|---|---|---|---|---|---|
+| Bicubic baseline | 30.256 | 0.6336 | 0.0307 | 4.467 | 4.927 |
+| **AI super-resolution** | **32.036** | **0.7533** | **0.0250** | **3.765** | **4.038** |
+| Δ | **+1.78** | **+0.120** | **−0.0057** | **−0.702** | **−0.889** |
+
+Downstream land-cover classification:
+
+| | Overall accuracy | mIoU |
+|---|---|---|
+| Bicubic baseline | 0.6303 | 0.3809 |
+| **AI super-resolution** | **0.6946** | **0.5163** |
+
+**Absolute scores are lower than on synthetic data, and every margin over the baseline is
+larger** (PSNR +1.43 → +1.78, SSIM +0.026 → +0.120, downstream accuracy +1.7 → +6.4 points).
+That is the expected direction: synthetic scenes are smooth and largely recoverable by
+interpolation, so there is little headroom above bicubic. Real imagery contains building edges,
+road networks and field boundaries — structure a network can learn and interpolation cannot
+reconstruct. Validation PSNR rose monotonically 30.96 → 32.30 over the 12 epochs and had not
+plateaued, so a longer schedule should gain more.
+
+> **Two limits on how these may be quoted.**
+>
+> *Protocol.* Metrics come from Wald's reduced-resolution protocol: the model was scored on a 4×
+> step at coarser scale (40 m → 10 m), not on the operational 10 m → 2.5 m product. Performance
+> at the operational scale is **assumed, not measured** — it rests on scale invariance.
+>
+> *Labels.* The downstream reference labels come from unsupervised clustering of the reference
+> imagery, not from field survey. So 0.6303 → 0.6946 measures agreement with the map obtainable
+> from truly finer imagery, **not** accuracy against surveyed ground truth. The *relative*
+> improvement is the defensible claim; the absolute figure is not an accuracy against reality.
+> Rasterised labels (Bhuvan LULC, ESA WorldCover) via `application.labels_path` would fix this.
 
 ## Testing
 

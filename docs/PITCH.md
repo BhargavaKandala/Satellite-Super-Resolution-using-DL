@@ -222,10 +222,19 @@ Total = 1.00 · L1(pixel)
 
 **Visual:** the two tables.
 
+**Real Sentinel-2** — Hyderabad, 2024-04-27, 0.00 % cloud:
+
 | | PSNR ↑ | SSIM ↑ | RMSE ↓ | SAM° ↓ | ERGAS ↓ |
 |---|---|---|---|---|---|
-| Bicubic baseline | 34.97 | 0.845 | 0.0178 | 2.791 | 2.772 |
-| **AI super-resolution** | **36.40** | **0.871** | **0.0151** | **2.622** | **2.294** |
+| Bicubic baseline | 30.26 | 0.634 | 0.0307 | 4.467 | 4.927 |
+| **AI super-resolution** | **32.04** | **0.753** | **0.0250** | **3.765** | **4.038** |
+
+**Say:**
+
+> "This is a real Sentinel-2 scene over Hyderabad — zero percent cloud, April
+> 2024. We improve on all five metrics against bicubic interpolation, including
+> both spectral metrics, which means we got sharper without distorting the
+> physics."
 
 *Re-run `evaluate.py` the night before and use **your** numbers — a retrain moves
 PSNR by ±0.3 dB. Never quote a figure from a checkpoint you no longer have.*
@@ -242,11 +251,11 @@ PSNR by ±0.3 dB. Never quote a figure from a checkpoint you no longer have.*
 **Visual:** big, single table.
 
 ```
-Land-cover classification accuracy
-  10 m input  : 97.1 %
-  SR product  : 98.8 %
+Land-cover classification — real Sentinel-2, Hyderabad
+  10 m input  : 63.0 %        mIoU 0.381
+  SR product  : 69.5 %        mIoU 0.516
 
-  mIoU        : 0.895  →  0.953
+              +6.4 points     +36 % relative IoU
 ```
 
 **Say:**
@@ -255,16 +264,23 @@ Land-cover classification accuracy
 > question: **did it help?**
 >
 > We ran land-cover classification on the original and on our super-resolved
-> product, with identical settings. Accuracy improved, and IoU improved more.
-> That's evidence the reconstructed detail carries real information — not just
-> that it looks nicer.
+> product, with identical settings. Accuracy went up more than six points, and
+> IoU improved by a third. That's evidence the reconstructed detail carries real
+> information — not just that it looks nicer.
 >
-> And I want to be straight with you about these numbers: they come from
-> synthetic scenes. They prove our pipeline is correct end to end. They are
-> **not** a measurement on real Sentinel-2 imagery. Real-data ingestion is the
-> same code path and it's our immediate next step."
+> One thing I want to be precise about. Those reference labels come from
+> clustering the finer imagery, not from a field survey. So the honest claim is
+> the *improvement*, not the absolute 69 percent — that's agreement with the map
+> you'd get from sharper imagery, not accuracy against surveyed ground truth."
 
-*Say that last paragraph. See the Q&A section for why.*
+*Volunteer that last paragraph — a judge who finds it themselves will assume you
+were hiding it. See the Q&A section.*
+
+**Worth knowing if a judge compares against an earlier version of your deck:**
+these margins are *larger* on real data than they were on synthetic (accuracy
++6.4 points versus +1.7). Synthetic scenes are smooth and mostly recoverable by
+interpolation; real cities have edges a network can learn and interpolation
+cannot. Your case got stronger when the data got real.
 
 ---
 
@@ -333,16 +349,28 @@ Then go to the live demo — [`DEMO.md`](DEMO.md).
 
 **Q: "Is this real Sentinel-2 data?"** ← *the one that decides your outcome*
 
-> "Not yet. The numbers on that slide come from synthetic scenes, and they
-> validate the pipeline, not the science. Real Sentinel-2 L2A goes through the
-> exact same code path — it's our immediate next step, and it's the single
-> highest-value thing we can do."
+> "Yes. Scene S2A_43QHV, 27 April 2024, over Hyderabad — zero percent cloud,
+> processing baseline 05.10, downloaded from the Copernicus archive. We trained
+> and evaluated on a 20-kilometre window of it.
+>
+> Two things I'd want you to know about how we handled it. Sentinel-2 ships one
+> file per band and they sort blue-green-red-NIR, while our pipeline needs
+> red-green-blue-NIR — stack them in filename order and you silently swap red
+> and blue, and every spectral metric is wrong while the image still looks fine.
+> And from processing baseline 04.00 the L2A products carry a minus-1000
+> radiometric offset, so reflectance is (DN − 1000)/10000. Miss that and every
+> reflectance is 0.1 too high. Our importer handles both and records what it
+> did in the file's metadata."
 
-**Answer this honestly.** It is far stronger than bluffing, and infinitely
-stronger than being caught. Judges have seen a hundred teams quote numbers they
-can't defend. A team that knows exactly what its numbers do and don't prove reads
-as the one that actually understands remote sensing. Rehearse this answer until
-it comes out calm rather than apologetic.
+*That answer does more than confirm the data is real — it demonstrates you know
+where the traps are. Most teams that use real Sentinel-2 have fallen into at
+least one of those two without noticing.*
+
+**Q: "So is anything still synthetic?"**
+
+> "Our earlier development runs were, and we kept them because they're a useful
+> control — the pipeline behaves the same on both. The results we're showing you
+> are from the real scene."
 
 ## Technical follow-ups
 
@@ -393,10 +421,11 @@ strongest possible signal of rigour.*
 
 **Q: "What's your accuracy?"** (vague — clarify before answering)
 
-> "Which one? Image reconstruction is 36.4 dB PSNR. Spectral angle is 2.62
-> degrees. Downstream land-cover accuracy is 98.8% versus 97.1% for the baseline.
-> We report all three because reconstruction quality alone doesn't tell you
-> whether the product is useful."
+> "Which one? Image reconstruction is 32.0 dB PSNR against 30.3 for bicubic.
+> Spectral angle is 3.77 degrees against 4.47. Downstream land-cover accuracy is
+> 69.5% versus 63.0% for the baseline. We report all three because
+> reconstruction quality alone doesn't tell you whether the product is useful —
+> and the third one is the only figure that answers 'does this help?'"
 
 ## Uncomfortable questions
 
